@@ -150,7 +150,12 @@ while True:
                 print("Please only type the category number.")
             except IndexError:
                 print("Please select one of the displayed numbers.")
-        for item in categories[cats[int(cat)][0]]:
+        for item in [
+            x for x in sorted(
+                categories[cats[int(cat)][0]],
+                key=lambda x: x['warehouse']
+            )
+        ]:
             print(
                 f"{item['state']} {item['category']},",
                 f"Warehouse {item['warehouse']}",
