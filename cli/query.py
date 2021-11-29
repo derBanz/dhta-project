@@ -10,8 +10,9 @@ for item in warehouse1:
         in the list.
 """
 
-from data import stock
+from loader import Loader
 import argparse
+from classes import User
 from datetime import datetime as dt
 
 # YOUR CODE STARTS HERE
@@ -29,106 +30,36 @@ parser.add_argument(
 )
 
 
-# Warehouse class
-class Warehouse:
-    def __init__(self, number):
-        self.stock = list()
-        self.number = number
-
-    def __iter__(self):
-        return iter(self.stock)
-
-    def __len__(self):
-        return len(self.stock)
-
-    def get_items(self):
-        return self.stock
-
-    def add_item(self, item):
-        self.stock.append(item)
+# Setting up the basic parameters
+def __initialize():
+    stock = Loader(model="stock")
+    personnel, usr = __hello()
+    return {
+        'staff': personnel,
+        'warehouses': stock,
+        'user': usr,
+    }
 
 
-# Browses the warehouses by its categories
-def __browse_categories(warehouses):
-    categories = dict()
-    for wh in warehouses:
-        for item in wh:
-            try:
-                categories[item['category']].append(item)
-            except KeyError:
-                categories[item['category']] = [item]
-    cats = [(k, len(v)) for k, v in reversed(sorted(
-        categories.items(), key=lambda cat: len(cat[1])
-    ))]
-    for i in range(len(cats)):
-        print(f"{i + 1}. {cats[i][0]} ({cats[i][1]})")
-    while True:
-        cat = input("Type the number of the category to browse: ")
-        try:
-            print(f"List of {cats[int(cat)][0]}s available:")
-            break
-        except TypeError:
-            print("Please only type the category number.")
-        except IndexError:
-            print("Please select one of the displayed numbers.")
-    for item in [
-        x for x in sorted(
-            categories[cats[int(cat)][0]],
-            key=lambda x: x['warehouse']
-        )
-    ]:
-        print(
-            f"{item['state']} {item['category']},",
-            f"Warehouse {item['warehouse']}",
-        )
-
-
-# Browses the warehouses for one item
-def __browse_items(warehouses):
-    wish = input("What is the name of the item? ")
-    items = __search_item(warehouses, wish)
-    amount = [len(items[i]) for i in range(len(warehouses))]
-    total_amount = sum(amount)
-    print(f"Amount available: {total_amount}")
-    if len(amount) - amount.count(0) > 1:
-        print("Location:")
-        for i in range(len(amount)):
-            if amount[i] != 0:
-                for item in [
-                    x for x in sorted(
-                        items[i],
-                        key=lambda x: dt.now() - dt.fromisoformat(
-                            x['date_of_stock']
-                        )
-                    )
-                ]:
-                    stocked = (
-                        dt.now() - dt.fromisoformat(
-                            item['date_of_stock']
-                        )
-                    ).days
-                    print(f"- Warehouse {i + 1} (in stock for {stocked} days)")
-                print()
-        max_amount = max(amount)
-        if amount.count(max_amount) == 1:
-            print(f"Maximum availability: {max_amount} in Warehouse {amount.index(max_amount) + 1}.")
-        else:
-            print(f"The following Warehouses have the maximum availability of {max_amount} in store:")
-            for i in range(len(amount)):
-                if amount[i] > 0:
-                    print(f"- Warehouse {i + 1}")
-        __order(amount, wish)
-    elif len(amount) - amount.count(0) == 1:
-        for i in range(len(amount)):
-            if amount[i] != 0:
-                print(f"Location: Warehouse {i + 1}")
-        __order(amount, wish)
+# Greet the user
+def __hello():
+    personnel = Loader(model="personnel")
+    if parser.parse_args().name:
+        name = parser.parse_args().name
     else:
-        print("Location: Not in stock")
+        name = input("Please enter your name: ")
+    for employee in personnel:
+        if employee.is_named(name):
+            usr = employee
+            break
+    else:
+        usr = User(name)
+    usr.greet()
+    return personnel, usr
 
 
 # Presents the user's choices
-def __choice(warehouses):
+def __choice(variables):
     opt = input(
         "What would you like to do?\n" +
         "1. List items by warehouse.\n" +
@@ -138,58 +69,129 @@ def __choice(warehouses):
         "Type the number of the operation: "
     )
     if opt == "1":
-        __print_all(warehouses)
+        __print_all(variables)
     elif opt == "2":
-        __browse_items(warehouses)
+        __browse_items(variables)
     elif opt == "3":
-        __browse_categories(warehouses)
+        __browse_categories(variables)
     elif opt == "4":
         return False
     else:
         print(f"{opt} is not a valid operation.")
-        __choice()
+        __choice(variables)
         return
     return __da_capo()
 
 
-# One time use to build a list of warehouse-items
-def __create_warehouses():
-    warehouses = list()
-    for item in sorted(stock, key=lambda thing: thing['warehouse']):
-        if item['warehouse'] > len(warehouses):
-            warehouses.append(Warehouse(item['warehouse']))
-        warehouses[item['warehouse'] - 1].add_item(item)
-    return warehouses
+# List all items by warehouse
+def __print_all(variables):
+    for warehouse in variables['warehouses']:
+        print(f"----------\nItems in {warehouse}\n----------")
+        for item in warehouse:
+            print(f'- {item}')
+    total = 0
+    for warehouse in variables['warehouses']:
+        total += warehouse.occupancy()
+        print(f"Total items in {warehouse}: {warehouse.occupancy()}")
+    variables['user'].update_log(f'Listed {total} items from all warehouses.')
 
 
-# Check if another operation is desired
-def __da_capo():
-    cont = input("Do you wish to perform another operation?(y/n) ")
-    if cont == "y":
-        return True
-    return False
-
-
-# Say goodbye to the user
-def __goodbye(usr):
-    print(f"Thank you for your visit, {usr}.")
-
-
-# Greet the user
-def __hello():
-    if parser.parse_args().name:
-        usr = parser.parse_args().name
+# Browses the warehouses for one item
+def __browse_items(variables):
+    wish = input("What is the name of the item? ")
+    item_list = [wh.search(wish) for wh in variables['warehouses']]
+    amount = [len(wh) for wh in item_list]
+    total_amount = sum(amount)
+    variables['user'].update_log(f'Searched for {wish}.')
+    print(f"Amount available: {total_amount}")
+    if len(amount) - amount.count(0) > 1:
+        print("Location:")
+        for i, items in enumerate(item_list):
+            if items:
+                for item in [
+                    x for x in sorted(
+                        items,
+                        key=lambda x: dt.now() - dt.fromisoformat(
+                            x.date_of_stock
+                        )
+                    )
+                ]:
+                    stocked = (
+                        dt.now() - dt.fromisoformat(
+                            item.date_of_stock
+                        )
+                    ).days
+                    print(f"- Warehouse {i + 1} (in stock for {stocked} days)")
+                print()
+        max_amount = max(amount)
+        if amount.count(max_amount) == 1:
+            print(f"Maximum availability: {max_amount} in Warehouse {amount.index(max_amount) + 1}.")
+        else:
+            print(f"The following Warehouses have the maximum availability of {max_amount} in store:")
+            for i, num in enumerate(amount):
+                if num == max_amount:
+                    print(f"- Warehouse {i + 1}")
+        __order(variables, amount, wish)
+    elif len(amount) - amount.count(0) == 1:
+        for i, num in enumerate(amount):
+            if num != 0:
+                print(f"Location: Warehouse {i + 1}")
+        __order(variables, amount, wish)
     else:
-        usr = input("Please enter your name: ")
-    print(f"Hello, {usr}.")
-    return usr
+        print("Location: Not in stock")
+
+
+# Browses the warehouses by its categories
+def __browse_categories(variables):
+    categories = dict()
+    for wh in variables['warehouses']:
+        for item in wh:
+            try:
+                categories[item.category].append(item)
+            except KeyError:
+                categories[item.category] = [item]
+    cats = [(k, len(v)) for k, v in reversed(sorted(
+        categories.items(), key=lambda cat: len(cat[1])
+    ))]
+    for i, category in enumerate(cats):
+        print(f"{i + 1}. {category[0]} ({category[1]})")
+    while True:
+        cat = input("Type the number of the category to browse: ")
+        try:
+            choice = cats[int(cat)][0]
+            print(f"List of {choice}s available:")
+            break
+        except TypeError:
+            print("Please only type the category number.")
+        except IndexError:
+            print("Please select one of the displayed numbers.")
+    for item in [
+        x for x in sorted(
+            categories[choice],
+            key=lambda x: x.warehouse
+        )
+    ]:
+        print(
+            f"{item},",
+            f"Warehouse {item.warehouse}",
+        )
+    variables['user'].update_log(f'Browsed the category {choice}.')
 
 
 # Given the requested item and the listed availibilities, order some of the
 # items
-def __order(amount, wish):
+def __order(variables, amount, wish):
     order = input(f"Would you like to order {wish}?(y/n) ")
     if order.lower() == "y":
+        if type(variables['user']) is User:
+            print('This option is only available for Employees.\nOrder process aborted.')
+            return
+        while not variables['user'].is_authenticated:
+            pw = input('Please enter your password. Leave empty to abort the order process: ')
+            if not pw:
+                print('Order process aborted.')
+                return
+            variables['user'].authenticate(pw)
         max_amount = sum(amount)
         while True:
             try:
@@ -201,43 +203,34 @@ def __order(amount, wish):
             print(f"-------\nMax order amount is {max_amount}.\n-------")
             max_order = input(f"Order {max_amount} of '{wish}'?(y/n) ")
             if max_order.lower() == "y":
-                print(f"{max_amount} of '{wish}' have been ordered.")
+                variables['user'].order(wish, max_order)
             else:
                 print("Order process aborted.")
         else:
-            print(f"{order_amount} of '{wish}' have been ordered.")
+            variables['user'].order(wish, order_amount)
+        variables['user'].update_log(f'Ordered {order_amount} of {wish}.')
 
 
-# List all items by warehouse
-def __print_all(warehouses):
-    for i in range(len(warehouses)):
-        print(f"----------\nItems in Warehouse {i + 1}\n----------")
-        for item in set(
-            [f"{x['state']} {x['category']}" for x in warehouses[i]]
-        ):
-            print(f"- {item}")
-    for i in range(len(warehouses)):
-        print(f"Total items in warehouse {i + 1}: {len(warehouses[i])}")
+# Check if another operation is desired
+def __da_capo():
+    cont = input("Do you wish to perform another operation?(y/n) ")
+    if cont == "y":
+        return True
+    return False
 
 
-# Build a list of items per warehouse that fit the query
-def __search_item(warehouses, wish):
-    wishes = [[] for warehouse in warehouses]
-    for i in range(len(warehouses)):
-        for x in warehouses[i]:
-            if f"{x['state']} {x['category']}".lower() == wish.lower():
-                wishes[i].append(x)
-    return wishes
+# Say goodbye to the user
+def __goodbye(variables):
+    variables['user'].bye()
 
 
 # The active script to be called
 def script():
-    warehouses = __create_warehouses()
-    usr = __hello()
+    variables = __initialize()
     da_capo = True
     while da_capo:
-        da_capo = __choice(warehouses)
-    __goodbye(usr)
+        da_capo = __choice(variables)
+    __goodbye(variables)
 
 
 script()
