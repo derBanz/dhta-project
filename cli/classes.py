@@ -17,9 +17,6 @@ class Warehouse:
         self.stock = list()
         self.id = id
 
-    def __iter__(self):
-        return iter(self.stock)
-
     def __str__(self):
         return f'Warehouse {self.id}'
 

@@ -87,7 +87,7 @@ def __choice(variables):
 def __print_all(variables):
     for warehouse in variables['warehouses']:
         print(f"----------\nItems in {warehouse}\n----------")
-        for item in warehouse:
+        for item in warehouse.get_items():
             print(f'- {item}')
     total = 0
     for warehouse in variables['warehouses']:
@@ -145,7 +145,7 @@ def __browse_items(variables):
 def __browse_categories(variables):
     categories = dict()
     for wh in variables['warehouses']:
-        for item in wh:
+        for item in wh.get_items():
             try:
                 categories[item.category].append(item)
             except KeyError:
